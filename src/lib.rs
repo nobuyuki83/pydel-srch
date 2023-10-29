@@ -1,5 +1,6 @@
-use numpy::{PyReadonlyArray1, PyReadonlyArray2, PyArray1};
-use pyo3::{pymodule, pyfunction, types::PyModule, PyResult, Python, wrap_pyfunction};
+use numpy::{PyReadonlyArray1, PyReadonlyArray2, PyArray1, PyArray2, PyArray3, IntoPyArray};
+use pyo3::prelude::*;
+use pyo3::{pymodule, pyfunction, pyclass, types::PyModule, PyResult, Python, wrap_pyfunction};
 use del_misc;
 
 fn squared_dist(p0: &[f32], p1: &[f32]) -> f32 {
@@ -64,10 +65,36 @@ fn pick_vertex_meshtri3<'a>(
             let d1 = squared_dist(&pos, q1);
             let d2 = squared_dist(&pos, q2);
             if d0 <= d1 && d0 <= d2 { return *i0 as i64; }
-            if d0 <= d1 && d0 <= d2 { return *i1 as i64; }
-            if d0 <= d1 && d0 <= d2 { return *i2 as i64; }
+            if d1 <= d2 && d1 <= d0 { return *i1 as i64; }
+            if d2 <= d0 && d2 <= d1 { return *i2 as i64; }
             return -1;
         }
+    }
+}
+
+
+#[pyclass]
+struct MyClass {
+    tree: del_geo::kdtree2::KdTree2<f32>,
+}
+
+#[pymethods]
+impl MyClass {
+    #[new]
+    fn new<'a>(vtx2xy: PyReadonlyArray2<'a, f32>) -> Self {
+        let slice = vtx2xy.as_slice().unwrap();
+        let points_ = nalgebra::Matrix2xX::<f32>::from_column_slice(slice);
+        let tree = del_geo::kdtree2::KdTree2::from_matrix(&points_);
+        vtx2xy.as_slice().unwrap();
+        MyClass {
+            tree: tree
+        }
+    }
+
+    fn edges<'a>(&self, py: Python<'a>) -> &'a PyArray3<f32> {
+        let e = self.tree.edges();
+        numpy::ndarray::Array3::<f32>::from_shape_vec(
+            (e.len() /4, 2, 2), e).unwrap().into_pyarray(py)
     }
 }
 
@@ -77,5 +104,6 @@ fn pick_vertex_meshtri3<'a>(
 fn del_srch(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(first_intersection_ray_meshtri3, m)?)?;
     m.add_function(wrap_pyfunction!(pick_vertex_meshtri3, m)?)?;
+    m.add_class::<MyClass>()?;
     Ok(())
 }
